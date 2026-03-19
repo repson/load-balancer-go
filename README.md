@@ -351,10 +351,6 @@ This is an educational project. Feel free to fork and experiment!
 
 MIT License
 
-## Authors
-
-Isaac - Educational Load Balancer Implementation
-
 ## Acknowledgments
 
 - Built with Go's standard library
