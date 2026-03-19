@@ -1,6 +1,6 @@
 # Load Balancer Go
 
-A production-ready load balancer implementation in Go featuring multiple balancing algorithms, HTTP/HTTPS reverse proxy, and TCP proxying capabilities. Built for learning and demonstration purposes.
+A educational load balancer implementation in Go featuring multiple balancing algorithms, HTTP/HTTPS reverse proxy, and TCP proxying capabilities. Built for learning and demonstration purposes.
 
 ## Features
 
