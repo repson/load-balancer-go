@@ -1,0 +1,30 @@
+# Load Balancer Configuration
+
+# General settings
+log_level: "info"        # Options: debug, info, warn, error
+max_retries: 3           # Maximum retry attempts for failed backends
+retry_delay: "100ms"     # Delay between retry attempts
+
+# HTTP Load Balancer
+http:
+  enabled: true
+  listen: ":8080"
+  algorithm: "round-robin"  # Options: round-robin, least-connections, weighted, ip-hash, random
+  backends:
+    - url: "http://localhost:3001"
+      weight: 1
+    - url: "http://localhost:3002"
+      weight: 1
+    - url: "http://localhost:3003"
+      weight: 2  # This backend will receive twice as many requests in weighted mode
+
+# TCP Load Balancer
+tcp:
+  enabled: true
+  listen: ":9090"
+  algorithm: "least-connections"  # Will route to backend with fewest active connections
+  backends:
+    - address: "localhost:4001"
+      weight: 1
+    - address: "localhost:4002"
+      weight: 1
