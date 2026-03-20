@@ -19,7 +19,15 @@ func NewLeastConnections(backends []*backend.Backend) *LeastConnections {
 	}
 }
 
-// NextBackend returns the backend with the least active connections
+// NextBackend returns the backend with the least active connections.
+//
+// Note on TOCTOU: the selection is a snapshot — between reading the
+// connection count and the caller incrementing it (via
+// Backend.IncrementConnections), another goroutine may have already
+// incremented the same backend's counter. Under high concurrency the
+// "fewest connections" guarantee therefore becomes a best-effort
+// approximation rather than a strict invariant. This is an inherent
+// trade-off of the algorithm and does not cause correctness issues.
 func (lc *LeastConnections) NextBackend(clientIP string) (*backend.Backend, error) {
 	lc.mu.RLock()
 	defer lc.mu.RUnlock()
