@@ -31,7 +31,7 @@ func (p *TCPProxy) HandleConnection(clientConn net.Conn) {
 	defer clientConn.Close()
 
 	clientIP := getClientIPFromConn(clientConn)
-	
+
 	var lastErr error
 	attempts := 0
 	maxAttempts := p.maxRetries + 1
@@ -46,7 +46,7 @@ func (p *TCPProxy) HandleConnection(clientConn net.Conn) {
 
 		// Increment active connections
 		backend.IncrementConnections()
-		
+
 		// Try to connect to backend
 		backendConn, err := net.DialTimeout("tcp", backend.Address, 5*time.Second)
 		if err != nil {
@@ -57,7 +57,7 @@ func (p *TCPProxy) HandleConnection(clientConn net.Conn) {
 				"attempt", attempts+1,
 				"max_attempts", maxAttempts,
 				"error", err)
-			
+
 			attempts++
 			if attempts < maxAttempts {
 				logger.Info("Retrying connection",
@@ -76,24 +76,25 @@ func (p *TCPProxy) HandleConnection(clientConn net.Conn) {
 
 		// Proxy data bidirectionally
 		errChan := make(chan error, 2)
-		
+
 		// Client -> Backend
 		go func() {
 			_, err := io.Copy(backendConn, clientConn)
 			errChan <- err
 		}()
-		
+
 		// Backend -> Client
 		go func() {
 			_, err := io.Copy(clientConn, backendConn)
 			errChan <- err
 		}()
 
-		// Wait for either direction to complete or error
+		// Wait for the first direction to finish, then close both connections
+		// so the second goroutine is unblocked, and finally drain its result.
 		err = <-errChan
-		
-		// Close connections
 		backendConn.Close()
+		clientConn.Close() // unblocks the second goroutine
+		<-errChan          // wait for the second goroutine to exit
 		backend.DecrementConnections()
 
 		if err != nil && err != io.EOF {
