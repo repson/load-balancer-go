@@ -1,8 +1,10 @@
 package proxy
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
 	"strings"
@@ -28,10 +30,17 @@ func NewHTTPProxy(bal balancer.Balancer, maxRetries int, retryDelay time.Duratio
 	}
 }
 
-// ServeHTTP handles HTTP requests with load balancing and retry logic
+// ServeHTTP handles HTTP requests with load balancing and retry logic.
+//
+// Each attempt is captured into a buffer via httptest.ResponseRecorder so
+// that a failed attempt never writes partial data to the real
+// http.ResponseWriter. Only a fully successful response is flushed to the
+// client. This prevents the double-write corruption that occurred when
+// httputil.ReverseProxy wrote headers/body on one attempt and then a
+// subsequent retry tried to write again to the same writer.
 func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	clientIP := getClientIP(r)
-	
+
 	var lastErr error
 	attempts := 0
 	maxAttempts := p.maxRetries + 1
@@ -47,7 +56,7 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		// Increment active connections
 		backend.IncrementConnections()
-		
+
 		// Parse backend URL
 		backendURL, err := url.Parse(backend.URL)
 		if err != nil {
@@ -61,12 +70,14 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		// Buffer this attempt so we never write partial data to the real writer.
+		rec := httptest.NewRecorder()
+
 		// Create reverse proxy
 		proxy := httputil.NewSingleHostReverseProxy(backendURL)
-		
-		// Custom error handler to capture errors
+
 		errorOccurred := false
-		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		proxy.ErrorHandler = func(_ http.ResponseWriter, _ *http.Request, err error) {
 			errorOccurred = true
 			lastErr = err
 			logger.Warn("Backend request failed",
@@ -76,7 +87,6 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				"error", err)
 		}
 
-		// Track response for logging
 		proxy.ModifyResponse = func(resp *http.Response) error {
 			if resp.StatusCode >= 500 {
 				errorOccurred = true
@@ -86,26 +96,32 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return nil
 		}
 
-		// Create a custom response writer to check if we actually wrote response
-		crw := &customResponseWriter{ResponseWriter: w, statusCode: 0}
-		
-		// Serve the request
-		proxy.ServeHTTP(crw, r)
-		
-		// Decrement connections
+		proxy.ServeHTTP(rec, r)
 		backend.DecrementConnections()
 
-		// If no error occurred, we're done
-		if !errorOccurred && crw.statusCode > 0 && crw.statusCode < 500 {
+		// Only flush to the real writer when the attempt succeeded.
+		if !errorOccurred && rec.Code < 500 {
+			result := rec.Result()
+			for key, values := range result.Header {
+				for _, v := range values {
+					w.Header().Add(key, v)
+				}
+			}
+			w.WriteHeader(result.StatusCode)
+			buf := new(bytes.Buffer)
+			buf.ReadFrom(result.Body)
+			result.Body.Close()
+			w.Write(buf.Bytes())
+
 			logger.Info("Request proxied successfully",
 				"backend", backend.URL,
 				"client_ip", clientIP,
 				"path", r.URL.Path,
-				"status", crw.statusCode)
+				"status", rec.Code)
 			return
 		}
 
-		// Retry logic
+		// Retry
 		attempts++
 		if attempts < maxAttempts {
 			logger.Info("Retrying request",
@@ -116,7 +132,7 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// All retries failed
+	// All retries failed — nothing has been written to w yet.
 	logger.Error("All retry attempts failed",
 		"attempts", attempts,
 		"last_error", lastErr)
@@ -150,12 +166,12 @@ func getClientIP(r *http.Request) string {
 			return strings.TrimSpace(ips[0])
 		}
 	}
-	
+
 	// Check X-Real-IP header
 	if xri := r.Header.Get("X-Real-IP"); xri != "" {
 		return xri
 	}
-	
+
 	// Fall back to RemoteAddr
 	ip := r.RemoteAddr
 	if idx := strings.LastIndex(ip, ":"); idx != -1 {
