@@ -1,7 +1,6 @@
 package backend
 
 import (
-	"sync"
 	"sync/atomic"
 )
 
@@ -11,7 +10,6 @@ type Backend struct {
 	Address     string // For TCP backends
 	Weight      int    // Weight for weighted algorithms
 	activeConns int64  // Atomic counter for active connections
-	mu          sync.RWMutex
 }
 
 // New creates a new Backend instance
