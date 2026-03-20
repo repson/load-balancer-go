@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net"
 	"net/http"
@@ -46,19 +47,20 @@ func TestEndToEnd_HTTP_And_TCP(t *testing.T) {
 	httpBalancer := balancer.NewRoundRobin(httpBackends)
 	httpProxy := proxy.NewHTTPProxy(httpBalancer, 3, 100*time.Millisecond)
 
-	// Start HTTP proxy server
-	httpProxyServer := &http.Server{
-		Addr:    "127.0.0.1:18080",
-		Handler: httpProxy,
+	// Start HTTP proxy server on an OS-assigned port.
+	httpProxyListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to start HTTP proxy listener: %v", err)
 	}
+	httpProxyAddr := httpProxyListener.Addr().String()
 
+	httpProxyServer := &http.Server{Handler: httpProxy}
 	go func() {
-		httpProxyServer.ListenAndServe()
+		if err := httpProxyServer.Serve(httpProxyListener); err != nil && err != http.ErrServerClosed {
+			t.Logf("HTTP proxy server error: %v", err)
+		}
 	}()
-	defer httpProxyServer.Close()
-
-	// Give HTTP server time to start
-	time.Sleep(100 * time.Millisecond)
+	defer httpProxyServer.Shutdown(context.Background())
 
 	// Create TCP proxy
 	tcpBackends := []*backend.Backend{
@@ -68,11 +70,12 @@ func TestEndToEnd_HTTP_And_TCP(t *testing.T) {
 	tcpBalancer := balancer.NewRoundRobin(tcpBackends)
 	tcpProxy := proxy.NewTCPProxy(tcpBalancer, 3, 100*time.Millisecond, 0)
 
-	// Start TCP proxy server
-	tcpProxyListener, err := net.Listen("tcp", "127.0.0.1:19090")
+	// Start TCP proxy server on an OS-assigned port.
+	tcpProxyListener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Failed to start TCP proxy listener: %v", err)
 	}
+	tcpProxyAddr := tcpProxyListener.Addr().String()
 	defer tcpProxyListener.Close()
 
 	go func() {
@@ -85,16 +88,13 @@ func TestEndToEnd_HTTP_And_TCP(t *testing.T) {
 		}
 	}()
 
-	// Give TCP server time to start
-	time.Sleep(100 * time.Millisecond)
-
 	// Test HTTP proxy
 	t.Run("HTTP_LoadBalancing", func(t *testing.T) {
 		responses := make(map[string]int)
 
 		// Make multiple requests
 		for i := 0; i < 4; i++ {
-			resp, err := http.Get("http://127.0.0.1:18080/test")
+			resp, err := http.Get("http://" + httpProxyAddr + "/test")
 			if err != nil {
 				t.Fatalf("HTTP request failed: %v", err)
 			}
@@ -118,7 +118,7 @@ func TestEndToEnd_HTTP_And_TCP(t *testing.T) {
 	t.Run("TCP_LoadBalancing", func(t *testing.T) {
 		// Make multiple TCP connections
 		for i := 0; i < 4; i++ {
-			conn, err := net.Dial("tcp", "127.0.0.1:19090")
+			conn, err := net.Dial("tcp", tcpProxyAddr)
 			if err != nil {
 				t.Fatalf("TCP connection failed: %v", err)
 			}
@@ -153,7 +153,7 @@ func TestEndToEnd_HTTP_And_TCP(t *testing.T) {
 
 		for i := 0; i < 10; i++ {
 			go func(id int) {
-				resp, err := http.Get("http://127.0.0.1:18080/concurrent")
+				resp, err := http.Get("http://" + httpProxyAddr + "/concurrent")
 				if err != nil {
 					t.Errorf("Concurrent request %d failed: %v", id, err)
 					done <- false
@@ -182,7 +182,7 @@ func TestEndToEnd_HTTP_And_TCP(t *testing.T) {
 
 		for i := 0; i < 10; i++ {
 			go func(id int) {
-				conn, err := net.Dial("tcp", "127.0.0.1:19090")
+				conn, err := net.Dial("tcp", tcpProxyAddr)
 				if err != nil {
 					t.Errorf("Concurrent TCP connection %d failed: %v", id, err)
 					done <- false
