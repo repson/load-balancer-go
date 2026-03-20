@@ -7,11 +7,6 @@ import (
 
 var defaultLogger *slog.Logger
 
-// GetLogger returns the current logger instance (for testing)
-func GetLogger() *slog.Logger {
-	return defaultLogger
-}
-
 // Init initializes the logger with the specified log level
 func Init(level string) {
 	var logLevel slog.Level
