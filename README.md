@@ -101,6 +101,7 @@ tcp:
   enabled: true
   listen: ":9090"
   algorithm: "least-connections"
+  dial_timeout: "5s"            # Timeout for connecting to a backend (default: 5s)
   backends:
     - address: "localhost:4001"
       weight: 1
@@ -138,6 +139,7 @@ See `examples/config.yaml` for a complete example.
 | `enabled` | bool | No | Enable TCP proxy (default: true) |
 | `listen` | string | Yes | Listen address (e.g., `:9090`) |
 | `algorithm` | string | Yes | Load balancing algorithm |
+| `dial_timeout` | duration | No | Backend connection timeout (default: `5s`) |
 | `backends` | array | Yes | List of backend servers |
 | `backends[].address` | string | Yes | Backend address (host:port) |
 | `backends[].weight` | int | Yes | Backend weight (for weighted algorithm) |
@@ -325,9 +327,10 @@ load-balancer-go/
 
 ## Performance Considerations
 
-- **Thread Safety**: All connection counters use atomic operations
-- **Goroutines**: Each TCP connection handled in separate goroutine
+- **Thread Safety**: All connection counters use atomic operations; the Random balancer protects its RNG with a mutex
+- **Goroutines**: Each TCP connection is handled in a separate goroutine; both copy directions are waited on before cleanup to prevent leaks
 - **Connection Pooling**: HTTP proxy uses Go's built-in connection pooling
+- **Retry Safety**: HTTP retries buffer each attempt internally so partial responses are never flushed to the client on failure
 - **Retry Logic**: Configurable retry attempts prevent cascading failures
 
 ## Limitations (MVP Scope)
