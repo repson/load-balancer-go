@@ -38,6 +38,61 @@ func TestRoundRobin_SequentialDistribution(t *testing.T) {
 	}
 }
 
+func TestIPHash_NoBackends(t *testing.T) {
+	ih := NewIPHash([]*backend.Backend{})
+	_, err := ih.NextBackend("192.168.1.1")
+	if err != ErrNoBackends {
+		t.Errorf("Expected ErrNoBackends, got %v", err)
+	}
+}
+
+func TestRandom_NoBackends(t *testing.T) {
+	r := NewRandom([]*backend.Backend{})
+	_, err := r.NextBackend("")
+	if err != ErrNoBackends {
+		t.Errorf("Expected ErrNoBackends, got %v", err)
+	}
+}
+
+func TestWeightedRoundRobin_NoBackends(t *testing.T) {
+	wrr := NewWeightedRoundRobin([]*backend.Backend{})
+	_, err := wrr.NextBackend("")
+	if err != ErrNoBackends {
+		t.Errorf("Expected ErrNoBackends, got %v", err)
+	}
+}
+
+func TestWeightedRoundRobin_ZeroWeightDefaultsToOne(t *testing.T) {
+	// A backend with weight 0 should be treated as weight 1.
+	backends := []*backend.Backend{
+		backend.New("http://backend1", "", 0), // weight 0 → should default to 1
+		backend.New("http://backend2", "", 2),
+	}
+	wrr := NewWeightedRoundRobin(backends)
+
+	// expanded should have 1 + 2 = 3 entries
+	if len(wrr.expanded) != 3 {
+		t.Errorf("Expected 3 expanded entries (1+2), got %d", len(wrr.expanded))
+	}
+
+	counts := make(map[string]int)
+	for i := 0; i < 300; i++ {
+		b, err := wrr.NextBackend("")
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		counts[b.URL]++
+	}
+
+	// backend1 should get ~100 (1/3), backend2 ~200 (2/3)
+	if counts["http://backend1"] != 100 {
+		t.Errorf("backend1: expected 100, got %d", counts["http://backend1"])
+	}
+	if counts["http://backend2"] != 200 {
+		t.Errorf("backend2: expected 200, got %d", counts["http://backend2"])
+	}
+}
+
 func TestRoundRobin_NoBackends(t *testing.T) {
 	rr := NewRoundRobin([]*backend.Backend{})
 	_, err := rr.NextBackend("")
