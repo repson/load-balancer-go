@@ -62,7 +62,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		tcpProxy := proxy.NewTCPProxy(bal, cfg.MaxRetries, cfg.GetRetryDelay())
+		tcpProxy := proxy.NewTCPProxy(bal, cfg.MaxRetries, cfg.GetRetryDelay(), cfg.TCP.GetDialTimeout())
 		go func() {
 			logger.Info("TCP proxy starting", "address", cfg.TCP.Listen, "algorithm", cfg.TCP.Algorithm)
 			if err := tcpProxy.Serve(cfg.TCP.Listen); err != nil {

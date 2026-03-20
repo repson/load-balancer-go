@@ -4,28 +4,43 @@ import "time"
 
 // Config represents the main configuration structure
 type Config struct {
-	LogLevel    string       `yaml:"log_level"`
-	MaxRetries  int          `yaml:"max_retries"`
-	RetryDelay  string       `yaml:"retry_delay"`
-	HTTP        *HTTPConfig  `yaml:"http"`
-	TCP         *TCPConfig   `yaml:"tcp"`
-	retryDelay  time.Duration // parsed retry delay
+	LogLevel   string        `yaml:"log_level"`
+	MaxRetries int           `yaml:"max_retries"`
+	RetryDelay string        `yaml:"retry_delay"`
+	HTTP       *HTTPConfig   `yaml:"http"`
+	TCP        *TCPConfig    `yaml:"tcp"`
+	retryDelay time.Duration // parsed retry delay
 }
 
 // HTTPConfig represents HTTP load balancer configuration
 type HTTPConfig struct {
-	Enabled   bool              `yaml:"enabled"`
-	Listen    string            `yaml:"listen"`
-	Algorithm string            `yaml:"algorithm"`
-	Backends  []BackendConfig   `yaml:"backends"`
+	Enabled   bool            `yaml:"enabled"`
+	Listen    string          `yaml:"listen"`
+	Algorithm string          `yaml:"algorithm"`
+	Backends  []BackendConfig `yaml:"backends"`
 }
 
 // TCPConfig represents TCP load balancer configuration
 type TCPConfig struct {
-	Enabled   bool              `yaml:"enabled"`
-	Listen    string            `yaml:"listen"`
-	Algorithm string            `yaml:"algorithm"`
-	Backends  []BackendConfig   `yaml:"backends"`
+	Enabled     bool            `yaml:"enabled"`
+	Listen      string          `yaml:"listen"`
+	Algorithm   string          `yaml:"algorithm"`
+	Backends    []BackendConfig `yaml:"backends"`
+	DialTimeout string          `yaml:"dial_timeout"` // e.g. "5s", "500ms"
+	dialTimeout time.Duration   // parsed value
+}
+
+// GetDialTimeout returns the parsed dial timeout, defaulting to 5s.
+func (c *TCPConfig) GetDialTimeout() time.Duration {
+	if c.dialTimeout == 0 {
+		return 5 * time.Second
+	}
+	return c.dialTimeout
+}
+
+// SetDialTimeout sets the parsed dial timeout duration.
+func (c *TCPConfig) SetDialTimeout(d time.Duration) {
+	c.dialTimeout = d
 }
 
 // BackendConfig represents a backend server configuration
@@ -62,9 +77,10 @@ func DefaultConfig() *Config {
 			},
 		},
 		TCP: &TCPConfig{
-			Enabled:   true,
-			Listen:    ":9090",
-			Algorithm: "round-robin",
+			Enabled:     true,
+			Listen:      ":9090",
+			Algorithm:   "round-robin",
+			DialTimeout: "5s",
 			Backends: []BackendConfig{
 				{Address: "localhost:4001", Weight: 1},
 				{Address: "localhost:4002", Weight: 1},

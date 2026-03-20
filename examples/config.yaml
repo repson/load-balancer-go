@@ -23,6 +23,7 @@ tcp:
   enabled: true
   listen: ":9090"
   algorithm: "least-connections"  # Will route to backend with fewest active connections
+  dial_timeout: "5s"              # Timeout for connecting to a backend (default: 5s)
   backends:
     - address: "localhost:4001"
       weight: 1

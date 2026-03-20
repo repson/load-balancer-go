@@ -12,17 +12,24 @@ import (
 
 // TCPProxy represents a TCP proxy with load balancing
 type TCPProxy struct {
-	balancer   balancer.Balancer
-	maxRetries int
-	retryDelay time.Duration
+	balancer    balancer.Balancer
+	maxRetries  int
+	retryDelay  time.Duration
+	dialTimeout time.Duration
 }
 
-// NewTCPProxy creates a new TCP proxy
-func NewTCPProxy(bal balancer.Balancer, maxRetries int, retryDelay time.Duration) *TCPProxy {
+// NewTCPProxy creates a new TCP proxy.
+// dialTimeout controls how long to wait when connecting to a backend;
+// pass 0 to use the default of 5 seconds.
+func NewTCPProxy(bal balancer.Balancer, maxRetries int, retryDelay time.Duration, dialTimeout time.Duration) *TCPProxy {
+	if dialTimeout <= 0 {
+		dialTimeout = 5 * time.Second
+	}
 	return &TCPProxy{
-		balancer:   bal,
-		maxRetries: maxRetries,
-		retryDelay: retryDelay,
+		balancer:    bal,
+		maxRetries:  maxRetries,
+		retryDelay:  retryDelay,
+		dialTimeout: dialTimeout,
 	}
 }
 
@@ -48,7 +55,7 @@ func (p *TCPProxy) HandleConnection(clientConn net.Conn) {
 		backend.IncrementConnections()
 
 		// Try to connect to backend
-		backendConn, err := net.DialTimeout("tcp", backend.Address, 5*time.Second)
+		backendConn, err := net.DialTimeout("tcp", backend.Address, p.dialTimeout)
 		if err != nil {
 			backend.DecrementConnections()
 			lastErr = err

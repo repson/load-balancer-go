@@ -66,7 +66,7 @@ func TestEndToEnd_HTTP_And_TCP(t *testing.T) {
 		backend.New("", tcpBackend2.Addr().String(), 1),
 	}
 	tcpBalancer := balancer.NewRoundRobin(tcpBackends)
-	tcpProxy := proxy.NewTCPProxy(tcpBalancer, 3, 100*time.Millisecond)
+	tcpProxy := proxy.NewTCPProxy(tcpBalancer, 3, 100*time.Millisecond, 0)
 
 	// Start TCP proxy server
 	tcpProxyListener, err := net.Listen("tcp", "127.0.0.1:19090")

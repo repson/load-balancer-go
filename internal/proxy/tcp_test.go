@@ -17,7 +17,7 @@ func TestNewTCPProxy(t *testing.T) {
 	}
 	bal := balancer.NewRoundRobin(backends)
 
-	proxy := NewTCPProxy(bal, 3, 100*time.Millisecond)
+	proxy := NewTCPProxy(bal, 3, 100*time.Millisecond, 0)
 
 	if proxy.balancer == nil {
 		t.Error("Expected balancer to be set")
@@ -93,7 +93,7 @@ func TestTCPProxy_HandleConnection_Success(t *testing.T) {
 		backend.New("", backendAddr, 1),
 	}
 	bal := balancer.NewRoundRobin(backends)
-	proxy := NewTCPProxy(bal, 0, 10*time.Millisecond)
+	proxy := NewTCPProxy(bal, 0, 10*time.Millisecond, 0)
 
 	// Create client connection
 	clientConn, serverConn := net.Pipe()
@@ -121,7 +121,7 @@ func TestTCPProxy_HandleConnection_NoBackends(t *testing.T) {
 	// Create proxy with no backends
 	backends := []*backend.Backend{}
 	bal := balancer.NewRoundRobin(backends)
-	proxy := NewTCPProxy(bal, 0, 10*time.Millisecond)
+	proxy := NewTCPProxy(bal, 0, 10*time.Millisecond, 0)
 
 	// Create client connection
 	clientConn, serverConn := net.Pipe()
@@ -149,7 +149,7 @@ func TestTCPProxy_HandleConnection_BackendUnavailable(t *testing.T) {
 		backend.New("", "127.0.0.1:99999", 1), // Invalid port
 	}
 	bal := balancer.NewRoundRobin(backends)
-	proxy := NewTCPProxy(bal, 1, 10*time.Millisecond)
+	proxy := NewTCPProxy(bal, 1, 10*time.Millisecond, 0)
 
 	// Create client connection
 	clientConn, serverConn := net.Pipe()
@@ -178,7 +178,7 @@ func TestTCPProxy_HandleConnection_Retry(t *testing.T) {
 		backend.New("", "127.0.0.1:99998", 1), // Unavailable backend
 	}
 	bal := balancer.NewRoundRobin(backends)
-	proxy := NewTCPProxy(bal, 2, 10*time.Millisecond)
+	proxy := NewTCPProxy(bal, 2, 10*time.Millisecond, 0)
 
 	clientConn, serverConn := net.Pipe()
 
@@ -233,7 +233,7 @@ func TestTCPProxy_ConnectionCounting(t *testing.T) {
 	}
 
 	bal := balancer.NewRoundRobin(backends)
-	proxy := NewTCPProxy(bal, 0, 10*time.Millisecond)
+	proxy := NewTCPProxy(bal, 0, 10*time.Millisecond, 0)
 
 	clientConn, serverConn := net.Pipe()
 
@@ -297,7 +297,7 @@ func TestTCPProxy_BidirectionalData(t *testing.T) {
 		backend.New("", backendAddr, 1),
 	}
 	bal := balancer.NewRoundRobin(backends)
-	proxy := NewTCPProxy(bal, 0, 10*time.Millisecond)
+	proxy := NewTCPProxy(bal, 0, 10*time.Millisecond, 0)
 
 	clientConn, serverConn := net.Pipe()
 
@@ -328,7 +328,7 @@ func TestTCPProxy_Serve(t *testing.T) {
 		backend.New("", "localhost:9999", 1),
 	}
 	bal := balancer.NewRoundRobin(backends)
-	proxy := NewTCPProxy(bal, 0, 10*time.Millisecond)
+	proxy := NewTCPProxy(bal, 0, 10*time.Millisecond, 0)
 
 	// Start server in goroutine
 	errChan := make(chan error, 1)
@@ -357,7 +357,7 @@ func TestTCPProxy_Serve_InvalidAddress(t *testing.T) {
 		backend.New("", "localhost:9999", 1),
 	}
 	bal := balancer.NewRoundRobin(backends)
-	proxy := NewTCPProxy(bal, 0, 10*time.Millisecond)
+	proxy := NewTCPProxy(bal, 0, 10*time.Millisecond, 0)
 
 	err := proxy.Serve("invalid:address:format")
 	if err == nil {
@@ -426,7 +426,7 @@ func BenchmarkTCPProxy_HandleConnection(b *testing.B) {
 		backend.New("", backendAddr, 1),
 	}
 	bal := balancer.NewRoundRobin(backends)
-	proxy := NewTCPProxy(bal, 0, 10*time.Millisecond)
+	proxy := NewTCPProxy(bal, 0, 10*time.Millisecond, 0)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

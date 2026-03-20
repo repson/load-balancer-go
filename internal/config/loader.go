@@ -29,6 +29,15 @@ func Load(filename string) (*Config, error) {
 		cfg.SetRetryDelay(delay)
 	}
 
+	// Parse TCP dial timeout
+	if cfg.TCP != nil && cfg.TCP.DialTimeout != "" {
+		d, err := time.ParseDuration(cfg.TCP.DialTimeout)
+		if err != nil {
+			return nil, fmt.Errorf("invalid tcp.dial_timeout format: %w", err)
+		}
+		cfg.TCP.SetDialTimeout(d)
+	}
+
 	// Validate configuration
 	if err := validate(&cfg); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
@@ -108,11 +117,11 @@ func validate(cfg *Config) error {
 // validateAlgorithm validates the load balancing algorithm
 func validateAlgorithm(algorithm string) error {
 	validAlgorithms := map[string]bool{
-		"round-robin":      true,
+		"round-robin":       true,
 		"least-connections": true,
-		"weighted":         true,
-		"ip-hash":          true,
-		"random":           true,
+		"weighted":          true,
+		"ip-hash":           true,
+		"random":            true,
 	}
 	if !validAlgorithms[algorithm] {
 		return fmt.Errorf("invalid algorithm: %s (must be round-robin, least-connections, weighted, ip-hash, or random)", algorithm)
