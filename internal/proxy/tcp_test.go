@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -398,6 +399,70 @@ func TestGetClientIPFromConn_NoPort(t *testing.T) {
 	if ip == "" {
 		t.Error("Expected non-empty IP")
 	}
+}
+
+// fakeListener is a net.Listener that returns a configurable sequence of
+// errors from Accept before finally blocking forever.
+type fakeListener struct {
+	addr    net.Addr
+	accepts []error // errors to return in order
+	idx     int32   // accessed atomically
+}
+
+func (l *fakeListener) Accept() (net.Conn, error) {
+	i := atomic.AddInt32(&l.idx, 1) - 1
+	if int(i) >= len(l.accepts) {
+		// Block forever to simulate Serve waiting
+		select {}
+	}
+	return nil, l.accepts[i]
+}
+func (l *fakeListener) Close() error   { return nil }
+func (l *fakeListener) Addr() net.Addr { return l.addr }
+
+// fakeAddr satisfies net.Addr for fakeListener.
+type fakeAddr struct{}
+
+func (fakeAddr) Network() string { return "tcp" }
+func (fakeAddr) String() string  { return "127.0.0.1:0" }
+
+// tempNetError is a net.Error that claims to be temporary, exercising the
+// continue branch inside serveListener's Accept error handler.
+type tempNetError struct{ msg string }
+
+func (e *tempNetError) Error() string   { return e.msg }
+func (e *tempNetError) Timeout() bool   { return false }
+func (e *tempNetError) Temporary() bool { return true }
+
+func TestTCPProxy_Serve_AcceptError(t *testing.T) {
+	backends := []*backend.Backend{
+		backend.New("", "localhost:9999", 1),
+	}
+	bal := balancer.NewRoundRobin(backends)
+	proxy := NewTCPProxy(bal, 0, 10*time.Millisecond, 0)
+
+	fl := &fakeListener{
+		addr: fakeAddr{},
+		accepts: []error{
+			&tempNetError{"temporary error 1"},
+			&tempNetError{"temporary error 2"},
+		},
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		proxy.serveListener(fl)
+	}()
+
+	// Give enough time for the two temporary errors to be consumed.
+	time.Sleep(100 * time.Millisecond)
+
+	if got := atomic.LoadInt32(&fl.idx); got < 2 {
+		t.Errorf("Expected Accept to be called at least twice, got %d", got)
+	}
+
+	// The goroutine is now blocked in select{}; that's fine for the test.
 }
 
 func BenchmarkTCPProxy_HandleConnection(b *testing.B) {

@@ -142,7 +142,13 @@ func (p *TCPProxy) Serve(listen string) error {
 	defer listener.Close()
 
 	logger.Info("TCP proxy listening", "address", listen)
+	p.serveListener(listener)
+	return nil
+}
 
+// serveListener runs the accept loop on an already-open listener.
+// It returns only when the listener is closed.
+func (p *TCPProxy) serveListener(listener net.Listener) {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
