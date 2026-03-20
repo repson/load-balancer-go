@@ -397,6 +397,142 @@ func TestValidate_NoProtocolsEnabled(t *testing.T) {
 	}
 }
 
+func TestConfig_GetDialTimeout_Default(t *testing.T) {
+	cfg := &TCPConfig{}
+	// zero value should return the 5s default
+	if got := cfg.GetDialTimeout(); got != 5*time.Second {
+		t.Errorf("Expected default dial timeout 5s, got %v", got)
+	}
+}
+
+func TestConfig_GetSetDialTimeout(t *testing.T) {
+	cfg := &TCPConfig{}
+	d := 2 * time.Second
+	cfg.SetDialTimeout(d)
+	if got := cfg.GetDialTimeout(); got != d {
+		t.Errorf("Expected dial timeout %v, got %v", d, got)
+	}
+}
+
+func TestLoad_WithDialTimeout(t *testing.T) {
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.yaml")
+
+	content := `log_level: info
+max_retries: 3
+retry_delay: 100ms
+tcp:
+  enabled: true
+  listen: ":9090"
+  algorithm: round-robin
+  dial_timeout: 3s
+  backends:
+    - address: localhost:4001
+      weight: 1
+`
+	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
+
+	cfg, err := Load(configFile)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if got := cfg.TCP.GetDialTimeout(); got != 3*time.Second {
+		t.Errorf("Expected dial_timeout 3s, got %v", got)
+	}
+}
+
+func TestLoad_InvalidDialTimeout(t *testing.T) {
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.yaml")
+
+	content := `log_level: info
+max_retries: 3
+retry_delay: 100ms
+tcp:
+  enabled: true
+  listen: ":9090"
+  algorithm: round-robin
+  dial_timeout: notaduration
+  backends:
+    - address: localhost:4001
+      weight: 1
+`
+	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
+
+	_, err := Load(configFile)
+	if err == nil {
+		t.Error("Expected error for invalid tcp.dial_timeout, got nil")
+	}
+}
+
+func TestValidate_TCPEmptyListen(t *testing.T) {
+	cfg := &Config{
+		LogLevel:   "info",
+		MaxRetries: 3,
+		TCP: &TCPConfig{
+			Enabled:   true,
+			Listen:    "",
+			Algorithm: "round-robin",
+			Backends:  []BackendConfig{{Address: "localhost:4001", Weight: 1}},
+		},
+	}
+	if err := validate(cfg); err == nil {
+		t.Error("Expected error for empty tcp.listen, got nil")
+	}
+}
+
+func TestValidate_TCPInvalidAlgorithm(t *testing.T) {
+	cfg := &Config{
+		LogLevel:   "info",
+		MaxRetries: 3,
+		TCP: &TCPConfig{
+			Enabled:   true,
+			Listen:    ":9090",
+			Algorithm: "invalid",
+			Backends:  []BackendConfig{{Address: "localhost:4001", Weight: 1}},
+		},
+	}
+	if err := validate(cfg); err == nil {
+		t.Error("Expected error for invalid tcp algorithm, got nil")
+	}
+}
+
+func TestValidate_TCPNoBackends(t *testing.T) {
+	cfg := &Config{
+		LogLevel:   "info",
+		MaxRetries: 3,
+		TCP: &TCPConfig{
+			Enabled:   true,
+			Listen:    ":9090",
+			Algorithm: "round-robin",
+			Backends:  []BackendConfig{},
+		},
+	}
+	if err := validate(cfg); err == nil {
+		t.Error("Expected error for no TCP backends, got nil")
+	}
+}
+
+func TestValidate_TCPBackendInvalidWeight(t *testing.T) {
+	cfg := &Config{
+		LogLevel:   "info",
+		MaxRetries: 3,
+		TCP: &TCPConfig{
+			Enabled:   true,
+			Listen:    ":9090",
+			Algorithm: "round-robin",
+			Backends:  []BackendConfig{{Address: "localhost:4001", Weight: 0}},
+		},
+	}
+	if err := validate(cfg); err == nil {
+		t.Error("Expected error for TCP backend weight 0, got nil")
+	}
+}
+
 func TestValidateAlgorithm(t *testing.T) {
 	validAlgorithms := []string{
 		"round-robin",
