@@ -221,7 +221,7 @@ func TestIPHash_Distribution(t *testing.T) {
 	ih := NewIPHash(backends)
 
 	counts := make(map[string]int)
-	
+
 	// Generate 300 different IPs
 	for i := 0; i < 300; i++ {
 		ip := fmt.Sprintf("192.168.%d.%d", i/256, i%256)
@@ -280,6 +280,32 @@ func TestRandom_AllBackendsUsed(t *testing.T) {
 			t.Errorf("Backend %s: distribution suspicious: %d (expected ~100)", url, count)
 		}
 	}
+}
+
+func TestRandom_Concurrent(t *testing.T) {
+	backends := []*backend.Backend{
+		backend.New("http://backend1", "", 1),
+		backend.New("http://backend2", "", 1),
+		backend.New("http://backend3", "", 1),
+	}
+
+	r := NewRandom(backends)
+
+	var wg sync.WaitGroup
+	requests := 300
+
+	for i := 0; i < requests; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := r.NextBackend("")
+			if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+			}
+		}()
+	}
+
+	wg.Wait()
 }
 
 func TestBackend_ConnectionCounting(t *testing.T) {
